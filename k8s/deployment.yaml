@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: copilot-api
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: copilot-api
+  template:
+    metadata:
+      labels:
+        app: copilot-api
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: copilot-api
+          image: ghcr.io/loaspra/copilot-api:latest
+          args: ["start", "--github-token", "$(GH_TOKEN)", "--wait", "--rate-limit", "5"]
+          ports:
+            - containerPort: 4141
+          env:
+            - name: GH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: copilot-api-secret
+                  key: GH_TOKEN
+          livenessProbe:
+            httpGet:
+              path: /v1/models
+              port: 4141
+            initialDelaySeconds: 15
+            periodSeconds: 30
+
