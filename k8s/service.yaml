@@ -4,6 +4,7 @@ metadata:
   name: copilot-api
   namespace: default
 spec:
+  type: NodePort
   selector:
     app: copilot-api
   ports:
