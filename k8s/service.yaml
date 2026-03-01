@@ -10,4 +10,4 @@ spec:
   ports:
     - port: 4141
       targetPort: 4141
-
+      nodePort: 30141
