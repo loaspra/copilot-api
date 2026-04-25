@@ -115,3 +115,33 @@ test("normalizes non-streaming responses to OpenAI shape", async () => {
     content: "Hello!",
   })
 })
+
+test("fills missing non-streaming choice index", async () => {
+  mockJsonResponse = {
+    id: "chatcmpl-456",
+    model: "claude-test",
+    choices: [
+      {
+        finish_reason: "stop",
+        logprobs: null,
+        message: {
+          role: "assistant",
+          content: "Hello from Claude!",
+        },
+      },
+    ],
+  }
+
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "claude-test",
+  }
+
+  const response = await createChatCompletions(payload)
+  if (!Object.hasOwn(response, "choices")) {
+    throw new Error("Expected non-streaming chat completion response")
+  }
+
+  const normalizedResponse = response as ChatCompletionResponse
+  expect(normalizedResponse.choices[0]?.index).toBe(0)
+})

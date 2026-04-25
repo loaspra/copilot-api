@@ -60,8 +60,9 @@ function normalizeChatCompletionResponse(
     object: "chat.completion",
     created: normalizeCreated(response.created),
     choices:
-      response.choices?.map((choice) => ({
+      response.choices?.map((choice, index) => ({
         ...choice,
+        index: normalizeChoiceIndex(choice.index, index),
         message: normalizeResponseMessage(choice.message),
       })) ?? [],
   } as ChatCompletionResponse
@@ -102,6 +103,13 @@ function normalizeCreated(created: number | undefined): number {
   return typeof created === "number" && created > 0 ?
       created
     : Math.floor(Date.now() / 1000)
+}
+
+function normalizeChoiceIndex(
+  index: number | undefined,
+  fallback: number,
+): number {
+  return typeof index === "number" && index >= 0 ? index : fallback
 }
 
 function normalizeResponseMessage(

@@ -17,7 +17,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: copilot-api
-          image: ghcr.io/loaspra/copilot-api:a936d5cc8749b5a04c29915d3bfd5a74fb7c7c79
+          image: ghcr.io/loaspra/copilot-api:6581ca6c25ab09af06a26f477cf9dcea33eca425
           args: ["start", "--github-token", "$(GH_TOKEN)", "--wait", "--rate-limit", "5"]
           ports:
             - containerPort: 4141
