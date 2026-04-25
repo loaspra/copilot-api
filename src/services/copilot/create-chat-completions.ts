@@ -1,5 +1,5 @@
 import consola from "consola"
-import { events } from "fetch-event-stream"
+import { events, type ServerSentEventMessage } from "fetch-event-stream"
 
 import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
@@ -40,10 +40,83 @@ export const createChatCompletions = async (
   }
 
   if (payload.stream) {
-    return events(response)
+    return normalizeChatCompletionStream(events(response))
   }
 
-  return (await response.json()) as ChatCompletionResponse
+  return normalizeChatCompletionResponse(
+    (await response.json()) as Partial<ChatCompletionResponse> & {
+      choices?: Array<Partial<ChoiceNonStreaming>>
+    },
+  )
+}
+
+function normalizeChatCompletionResponse(
+  response: Partial<ChatCompletionResponse> & {
+    choices?: Array<Partial<ChoiceNonStreaming>>
+  },
+): ChatCompletionResponse {
+  return {
+    ...response,
+    object: "chat.completion",
+    created: normalizeCreated(response.created),
+    choices:
+      response.choices?.map((choice) => ({
+        ...choice,
+        message: normalizeResponseMessage(choice.message),
+      })) ?? [],
+  } as ChatCompletionResponse
+}
+
+async function* normalizeChatCompletionStream(
+  stream: AsyncGenerator<ServerSentEventMessage, void, unknown>,
+) {
+  for await (const event of stream) {
+    if (event.data === "[DONE]" || !event.data) {
+      yield event
+      continue
+    }
+
+    const chunk = JSON.parse(event.data) as Partial<ChatCompletionChunk>
+    if (
+      (!chunk.id || chunk.id.length === 0)
+      && (chunk.choices?.length ?? 0) === 0
+    ) {
+      continue
+    }
+
+    const normalizedChunk: ChatCompletionChunk = {
+      ...chunk,
+      object: "chat.completion.chunk",
+      created: normalizeCreated(chunk.created),
+      choices: chunk.choices ?? [],
+    } as ChatCompletionChunk
+
+    yield {
+      ...event,
+      data: JSON.stringify(normalizedChunk),
+    }
+  }
+}
+
+function normalizeCreated(created: number | undefined): number {
+  return typeof created === "number" && created > 0 ?
+      created
+    : Math.floor(Date.now() / 1000)
+}
+
+function normalizeResponseMessage(
+  message: Partial<ResponseMessage> | undefined,
+): ResponseMessage {
+  const messageWithPadding = message as
+    | (Partial<ResponseMessage> & { padding?: string })
+    | undefined
+  const { padding: _padding, ...normalizedMessage } = messageWithPadding ?? {}
+
+  return {
+    role: "assistant",
+    content: null,
+    ...normalizedMessage,
+  }
 }
 
 // Streaming types
@@ -130,6 +203,7 @@ export interface ChatCompletionsPayload {
   temperature?: number | null
   top_p?: number | null
   max_tokens?: number | null
+  max_completion_tokens?: number | null
   stop?: string | Array<string> | null
   n?: number | null
   stream?: boolean | null

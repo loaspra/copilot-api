@@ -14,6 +14,9 @@ import {
   type ChatCompletionsPayload,
 } from "~/services/copilot/create-chat-completions"
 
+const usesMaxCompletionTokens = (modelId: string) =>
+  /^gpt-5(?:$|[-.])/.test(modelId)
+
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
 
@@ -40,11 +43,24 @@ export async function handleCompletion(c: Context) {
   if (state.manualApprove) await awaitApproval()
 
   if (isNullish(payload.max_tokens)) {
-    payload = {
-      ...payload,
-      max_tokens: selectedModel?.capabilities.limits.max_output_tokens,
+    const maxOutputTokens = selectedModel?.capabilities.limits.max_output_tokens
+    if (usesMaxCompletionTokens(payload.model)) {
+      payload = {
+        ...payload,
+        max_completion_tokens: maxOutputTokens,
+      }
+      delete payload.max_tokens
+      consola.debug(
+        "Set max_completion_tokens to:",
+        JSON.stringify(payload.max_completion_tokens),
+      )
+    } else {
+      payload = {
+        ...payload,
+        max_tokens: maxOutputTokens,
+      }
+      consola.debug("Set max_tokens to:", JSON.stringify(payload.max_tokens))
     }
-    consola.debug("Set max_tokens to:", JSON.stringify(payload.max_tokens))
   }
 
   const response = await createChatCompletions(payload)

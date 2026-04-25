@@ -1,6 +1,9 @@
 import { test, expect, mock } from "bun:test"
 
-import type { ChatCompletionsPayload } from "../src/services/copilot/create-chat-completions"
+import type {
+  ChatCompletionResponse,
+  ChatCompletionsPayload,
+} from "../src/services/copilot/create-chat-completions"
 
 import { state } from "../src/lib/state"
 import { createChatCompletions } from "../src/services/copilot/create-chat-completions"
@@ -10,12 +13,19 @@ state.copilotToken = "test-token"
 state.vsCodeVersion = "1.0.0"
 state.accountType = "individual"
 
+let mockJsonResponse: Record<string, unknown> = {
+  id: "123",
+  object: "chat.completion",
+  created: 1,
+  choices: [],
+}
+
 // Helper to mock fetch
 const fetchMock = mock(
   (_url: string, opts: { headers: Record<string, string> }) => {
     return {
       ok: true,
-      json: () => ({ id: "123", object: "chat.completion", choices: [] }),
+      json: () => mockJsonResponse,
       headers: opts.headers,
     }
   },
@@ -24,6 +34,12 @@ const fetchMock = mock(
 ;(globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock
 
 test("sets X-Initiator to agent if tool/assistant present", async () => {
+  mockJsonResponse = {
+    id: "123",
+    object: "chat.completion",
+    created: 1,
+    choices: [],
+  }
   const payload: ChatCompletionsPayload = {
     messages: [
       { role: "user", content: "hi" },
@@ -40,6 +56,12 @@ test("sets X-Initiator to agent if tool/assistant present", async () => {
 })
 
 test("sets X-Initiator to user if only user present", async () => {
+  mockJsonResponse = {
+    id: "123",
+    object: "chat.completion",
+    created: 1,
+    choices: [],
+  }
   const payload: ChatCompletionsPayload = {
     messages: [
       { role: "user", content: "hi" },
@@ -53,4 +75,43 @@ test("sets X-Initiator to user if only user present", async () => {
     fetchMock.mock.calls[1][1] as { headers: Record<string, string> }
   ).headers
   expect(headers["X-Initiator"]).toBe("user")
+})
+
+test("normalizes non-streaming responses to OpenAI shape", async () => {
+  mockJsonResponse = {
+    id: "chatcmpl-123",
+    model: "gpt-test",
+    choices: [
+      {
+        index: 0,
+        finish_reason: "stop",
+        logprobs: null,
+        message: {
+          role: "assistant",
+          content: "Hello!",
+          padding: "abcd",
+        },
+      },
+    ],
+  }
+
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "gpt-test",
+  }
+
+  const response = await createChatCompletions(payload)
+  if (!Object.hasOwn(response, "choices")) {
+    throw new Error("Expected non-streaming chat completion response")
+  }
+
+  const normalizedResponse = response as ChatCompletionResponse
+
+  expect(normalizedResponse.object).toBe("chat.completion")
+  expect(typeof normalizedResponse.created).toBe("number")
+  expect(normalizedResponse.created).toBeGreaterThan(0)
+  expect(normalizedResponse.choices[0]?.message).toEqual({
+    role: "assistant",
+    content: "Hello!",
+  })
 })
