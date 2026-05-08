@@ -42,25 +42,29 @@ export async function handleCompletion(c: Context) {
 
   if (state.manualApprove) await awaitApproval()
 
-  if (isNullish(payload.max_tokens)) {
-    const maxOutputTokens = selectedModel?.capabilities.limits.max_output_tokens
-    if (usesMaxCompletionTokens(payload.model)) {
-      payload = {
-        ...payload,
-        max_completion_tokens: maxOutputTokens,
-      }
-      delete payload.max_tokens
-      consola.debug(
-        "Set max_completion_tokens to:",
-        JSON.stringify(payload.max_completion_tokens),
-      )
-    } else {
-      payload = {
-        ...payload,
-        max_tokens: maxOutputTokens,
-      }
-      consola.debug("Set max_tokens to:", JSON.stringify(payload.max_tokens))
+  if (usesMaxCompletionTokens(payload.model)) {
+    // GPT-5 series requires max_completion_tokens; max_tokens is rejected.
+    // Always rewrite regardless of whether max_tokens was provided or null.
+    let limit = selectedModel?.capabilities.limits.max_output_tokens
+    if (!isNullish(payload.max_tokens)) limit = payload.max_tokens
+    else if (!isNullish(payload.max_completion_tokens))
+      limit = payload.max_completion_tokens
+    payload = {
+      ...payload,
+      max_completion_tokens: limit,
     }
+    delete payload.max_tokens
+    consola.debug(
+      "Set max_completion_tokens to:",
+      JSON.stringify(payload.max_completion_tokens),
+    )
+  } else if (isNullish(payload.max_tokens)) {
+    const maxOutputTokens = selectedModel?.capabilities.limits.max_output_tokens
+    payload = {
+      ...payload,
+      max_tokens: maxOutputTokens,
+    }
+    consola.debug("Set max_tokens to:", JSON.stringify(payload.max_tokens))
   }
 
   const response = await createChatCompletions(payload)
